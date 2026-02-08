@@ -18,6 +18,7 @@ import {
   TableRow,
   Alert,
   Snackbar,
+  CircularProgress,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import axios from 'axios';
@@ -28,7 +29,6 @@ interface SearchResult {
   camera_name?: string;
   camera_ip?: string;
   camera_code?: string;
-  // Thêm các trường khác nếu cần
 }
 
 const GeneralSearchPage: React.FC = () => {
@@ -38,7 +38,7 @@ const GeneralSearchPage: React.FC = () => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false,
     message: '',
     severity: 'success',
@@ -60,27 +60,31 @@ const GeneralSearchPage: React.FC = () => {
       });
   }, []);
 
-  const handleSearch = async () => {
-    if (!searchValue.trim()) {
-      setError('Vui lòng nhập giá trị tìm kiếm');
-      return;
-    }
-
+  // Hàm load dữ liệu (dùng chung cho search và auto-load location)
+  const loadData = async (locCode?: string, val?: string) => {
     setLoading(true);
     setError('');
+    setResults([]);
 
     try {
-      const params = {
+      const params: any = {
         type: 'all',
-        value: searchValue,
-        location_code: selectedLocation === 'all' ? undefined : selectedLocation
       };
+
+      if (locCode && locCode !== 'all') {
+        params.location_code = locCode;
+      }
+
+      if (val && val.trim()) {
+        params.value = val.trim();
+      }
+
+      console.log('Params gửi đi:', params);
 
       const res = await axios.get('/api/search', { params });
       console.log('Kết quả từ API:', res.data);
 
-      // Format dữ liệu cho bảng (chỉ lấy các cột cần)
-      const formatted = res.data.results.map((item: any) => ({
+      const formatted = (res.data.results || []).map((item: any) => ({
         box_code: item.box_code || '-',
         box_ip: item.box_ip || '-',
         camera_code: item.camera_code || '-',
@@ -89,26 +93,33 @@ const GeneralSearchPage: React.FC = () => {
       }));
 
       setResults(formatted);
-      
-      if (res.data.total === 0) {
+
+      if (formatted.length === 0) {
         setSnackbar({
           open: true,
-          message: 'Không tìm thấy kết quả nào',
+          message: 'Không tìm thấy dữ liệu cho vị trí này',
           severity: 'info',
         });
       }
     } catch (err: any) {
-      console.error('Lỗi tìm kiếm:', err);
-      const errorMessage = err.response?.data?.error || 'Lỗi khi tìm kiếm. Vui lòng thử lại sau.';
-      setError(errorMessage);
-      setSnackbar({
-        open: true,
-        message: errorMessage,
-        severity: 'error',
-      });
+      console.error('Lỗi:', err);
+      const errorMsg = err.response?.data?.error || 'Lỗi khi tải dữ liệu';
+      setError(errorMsg);
+      setSnackbar({ open: true, message: errorMsg, severity: 'error' });
     } finally {
       setLoading(false);
     }
+  };
+
+  // Auto-load khi thay đổi location (không cần nhập từ khóa)
+  useEffect(() => {
+      loadData(selectedLocation, searchValue);
+
+  }, [selectedLocation]);
+
+  // Tìm kiếm khi nhấn nút hoặc Enter (giữ nguyên)
+  const handleSearch = () => {
+    loadData(selectedLocation, searchValue);
   };
 
   const handleCloseSnackbar = () => {
@@ -213,7 +224,7 @@ const GeneralSearchPage: React.FC = () => {
         </Table>
       </TableContainer>
 
-      {/* Snackbar for notifications */}
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
